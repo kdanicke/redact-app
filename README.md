@@ -2,7 +2,7 @@
 
 A 100% local web app to detect and redact sensitive data from text and files before sharing externally or pasting into AI chats.
 
-> **Privacy first.** No data leaves your machine. No internet connection, no logging, no telemetry.
+> **Privacy first.** No data leaves your machine. No internet connection required at any point — fonts are system fonts with no external calls. No logging, no telemetry.
 
 ---
 
@@ -58,21 +58,77 @@ A 100% local web app to detect and redact sensitive data from text and files bef
 
 **Requirements:** Python 3.10+
 
+---
+
+### Option A — PowerShell (Windows / VS Code terminal)
+
+```powershell
+# 1. Clone the repo
+git clone https://github.com/your-org/redact.git
+cd redact
+
+# 2. Create a virtual environment
+python -m venv .venv
+
+# 3. Activate it
+.venv\Scripts\Activate.ps1
+
+# If you get an execution policy error, run this first:
+# Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+
+# 4. Install dependencies
+pip install -r requirements.txt
+
+# 5. (Optional) Enable PDF support
+pip install pdfminer.six
+
+# 6. Run
+python app.py
+
+# 7. Open http://localhost:5000
+```
+
+> **VS Code tip:** After activating the virtual environment, open the Command Palette
+> (`Ctrl+Shift+P`) → **Python: Select Interpreter** → choose the `.venv` entry.
+> VS Code will then use it automatically for the integrated terminal.
+
+---
+
+### Option B — macOS / Linux (bash / zsh)
+
 ```bash
 # 1. Clone the repo
 git clone https://github.com/your-org/redact.git
 cd redact
 
-# 2. Install dependencies
+# 2. Create a virtual environment
+python3 -m venv .venv
+
+# 3. Activate it
+source .venv/bin/activate
+
+# 4. Install dependencies
 pip install -r requirements.txt
 
-# 3. (Optional) Enable PDF support
+# 5. (Optional) Enable PDF support
 pip install pdfminer.six
 
-# 4. Run
+# 6. Run
 python app.py
 
-# 5. Open http://localhost:5000
+# 7. Open http://localhost:5000
+```
+
+---
+
+### Stopping the app
+
+Press `Ctrl+C` in the terminal to stop the server.
+
+### Deactivating the virtual environment
+
+```bash
+deactivate
 ```
 
 ### Docker
