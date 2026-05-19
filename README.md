@@ -2,7 +2,7 @@
 
 A 100% local web app to detect and redact sensitive data from text and files before sharing externally or pasting into AI chats.
 
-> **Privacy first.** No data leaves your machine. No internet connection.. No logging, no telemetry.
+> **Privacy first.** No data leaves your machine. No internet connection, no logging, no telemetry.
 
 ---
 
