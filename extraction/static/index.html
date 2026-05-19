@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>REDACT — Sensitive Data Scrubber</title>
+<!-- Fonts: 100% system fonts — no external network calls -->
+<style>
+/* ── Themes ── */
+:root {
+  --mono:'Cascadia Code','Fira Code','Consolas','Menlo','Monaco','Courier New',monospace;
+  --display:Impact,'Arial Narrow','Arial Black',Arial,sans-serif;
+  --body:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,Roboto,Helvetica,Arial,sans-serif;
+  --scrollbar-w:5px;
+}
+[data-theme="dark"] {
+  --bg:#0a0c0f; --surface:#111418; --surface2:#181d23; --surface3:#0e1318;
+  --border:#1e2530; --border2:#2a3340;
+  --text:#c8d6e5; --text-dim:#8a9db0; --text-bright:#e8f4ff;
+  --accent:#00d4aa; --accent2:#4a9df8;
+  --sb-track:#111418; --sb-thumb:#2a3340; --sb-hover:#3a4a5a;
+  --badge-bg:rgba(255,255,255,.04); --badge-border:rgba(255,255,255,.08);
+  --proc-bg:rgba(10,12,15,.7); --empty-op:.3;
+}
+[data-theme="light"] {
+  --bg:#f0f2f5; --surface:#ffffff; --surface2:#f5f7fa; --surface3:#eef1f5;
+  --border:#dde2ea; --border2:#c8d0dc;
+  --text:#1a2332; --text-dim:#445566; --text-bright:#0a1520;
+  --accent:#00a880; --accent2:#1A73E8;
+  --sb-track:#f0f2f5; --sb-thumb:#c8d0dc; --sb-hover:#a8b4c0;
+  --badge-bg:rgba(0,0,0,.04); --badge-border:rgba(0,0,0,.1);
+  --proc-bg:rgba(240,242,245,.75); --empty-op:.4;
+}
+/* ── Base ── */
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--body);min-height:100vh;overflow-x:hidden;transition:background .2s,color .2s}
+[data-theme="dark"] body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.025) 2px,rgba(0,0,0,.025) 4px);pointer-events:none;z-index:1000}
+/* ── Scrollbars ── */
+::-webkit-scrollbar{width:var(--scrollbar-w);height:var(--scrollbar-w)}
+::-webkit-scrollbar-track{background:var(--sb-track)}
+::-webkit-scrollbar-thumb{background:var(--sb-thumb);border-radius:10px}
+::-webkit-scrollbar-thumb:hover{background:var(--sb-hover)}
+::-webkit-scrollbar-corner{background:var(--sb-track)}
+
+/* ── Header ── */
+header{border-bottom:1px solid var(--border);padding:0 18px;height:52px;display:flex;align-items:center;background:var(--surface);position:sticky;top:0;z-index:100;gap:10px}
+.logo{display:flex;align-items:baseline;gap:8px;flex-shrink:0}
+.logo-text{font-family:var(--display);font-size:24px;letter-spacing:4px;color:var(--text-bright)}
+.logo-sub{font-family:var(--mono);font-size:9px;color:var(--accent);letter-spacing:2px;text-transform:uppercase}
+.header-center{display:flex;align-items:center;gap:8px;flex:1;justify-content:center}
+.mode-switcher{display:flex;border:1px solid var(--border2);border-radius:5px;overflow:hidden}
+.mode-btn{font-family:var(--mono);font-size:10px;letter-spacing:1px;text-transform:uppercase;padding:6px 13px;background:transparent;color:var(--text-dim);border:none;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:5px;white-space:nowrap}
+.mode-btn+.mode-btn{border-left:1px solid var(--border2)}
+.mode-btn.active{background:var(--surface2)}
+.mode-btn.active[data-mode="general"]{color:var(--accent)}
+.mode-btn.active[data-mode="cloud"]{color:var(--accent2)}
+.mode-btn.active[data-mode="language"]{color:#FFB300}
+.lang-select{font-family:var(--mono);font-size:10px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);padding:5px 8px;border-radius:5px;outline:none;cursor:pointer}
+.lang-select:focus{border-color:var(--accent2)}
+.sync-toggle{display:flex;align-items:center;gap:5px;font-family:var(--mono);font-size:9px;color:var(--text-dim);letter-spacing:.5px;text-transform:uppercase;background:var(--surface2);border:1px solid var(--border2);border-radius:5px;padding:5px 9px;cursor:pointer;transition:all .15s;user-select:none}
+.sync-toggle:hover{border-color:var(--accent2);color:var(--accent2)}
+.sync-toggle.active{border-color:var(--accent2);color:var(--accent2)}
+.header-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.status-bar{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10px;color:var(--text-dim)}
+.status-dot{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.header-count{font-weight:700;display:none;font-family:var(--mono);font-size:10px}
+.theme-btn{display:flex;align-items:center;justify-content:center;width:32px;height:28px;border-radius:5px;border:1px solid var(--border2);background:var(--surface2);cursor:pointer;font-size:14px;transition:all .15s}
+.theme-btn:hover{border-color:var(--accent)}
+
+/* ── Layout ── */
+.app{display:grid;grid-template-columns:270px 1fr 1fr;height:calc(100vh - 52px)}
+
+/* ── Sidebar ── */
+.sidebar{background:var(--surface);border-right:1px solid var(--border);overflow-y:auto;padding:12px 11px;display:flex;flex-direction:column;gap:4px}
+.section-title{font-family:var(--mono);font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text-dim);padding:7px 0 5px;border-bottom:1px solid var(--border);margin-bottom:3px}
+.mode-banner{border-radius:5px;padding:7px 9px;margin-bottom:5px;font-family:var(--mono);font-size:10px;letter-spacing:.5px;line-height:1.5}
+.mode-banner.general{background:rgba(0,212,170,.08);border:1px solid rgba(0,212,170,.2);color:var(--accent)}
+.mode-banner.cloud{background:rgba(74,157,248,.08);border:1px solid rgba(74,157,248,.2);color:var(--accent2)}
+.mode-banner.language{background:rgba(255,179,0,.08);border:1px solid rgba(255,179,0,.2);color:#FFB300}
+
+/* ── Sidebar section headers (tree structure within cloud/language modes) ── */
+.sidebar-section-hdr{font-family:var(--mono);font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--text);padding:8px 2px 4px;margin-top:2px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:5px}
+.sidebar-section-hdr:first-child{margin-top:0}
+.sidebar-section-hdr-line{flex:1;height:1px;background:var(--border)}
+
+/* ── Preset section ── */
+.preset-section-header{font-family:var(--mono);font-size:8px;letter-spacing:1px;text-transform:uppercase;color:var(--text-dim);padding:5px 0 3px;margin-top:2px}
+.preset-row{display:flex;flex-wrap:wrap;gap:3px;margin-bottom:4px}
+.preset-btn{font-family:var(--mono);font-size:10px;padding:3px 7px;border-radius:3px;border:1px solid var(--border2);background:var(--surface2);color:var(--text-dim);cursor:pointer;transition:all .15s}
+.preset-btn:hover,.preset-btn.active{border-color:var(--accent2);color:var(--accent2);background:rgba(74,157,248,.08)}
+
+/* ── cls groups ── */
+.cls-group{margin-bottom:3px;border-radius:5px;overflow:hidden;border:1px solid var(--border)}
+.cls-header{display:flex;align-items:center;gap:6px;padding:6px 8px;cursor:pointer;background:var(--surface2);user-select:none;transition:background .12s}
+.cls-header:hover{background:var(--surface3)}
+.cls-pill{font-family:var(--mono);font-size:8px;font-weight:700;padding:2px 5px;border-radius:3px;flex-shrink:0;letter-spacing:.3px}
+.cls-header-name{font-size:11px;color:var(--text);flex:1;font-weight:500}
+.cls-count{font-family:var(--mono);font-size:8px;color:var(--text-dim);background:var(--bg);padding:1px 4px;border-radius:100px;border:1px solid var(--border)}
+.cls-chevron{font-size:8px;color:var(--text-dim);transition:transform .18s;flex-shrink:0}
+.cls-group.open .cls-chevron{transform:rotate(90deg)}
+.cls-master{cursor:pointer;flex-shrink:0}
+.cls-master input,.label-item input[type="checkbox"]{appearance:none;border:1px solid var(--border2);border-radius:2px;cursor:pointer;position:relative;transition:all .12s}
+.cls-master input{width:13px;height:13px}
+.label-item input[type="checkbox"]{width:12px;height:12px;flex-shrink:0}
+.cls-master input:checked,.label-item input[type="checkbox"]:checked{background:currentColor;border-color:currentColor}
+.cls-master input:checked::after,.label-item input[type="checkbox"]:checked::after{content:'✓';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:8px;color:#000;font-weight:900;line-height:1;text-align:center}
+.cls-labels{display:none;flex-direction:column;background:var(--surface3)}
+.cls-group.open .cls-labels{display:flex}
+.label-item{display:flex;align-items:center;gap:6px;padding:4px 8px 4px 22px;border-top:1px solid var(--border);cursor:pointer;transition:background .1s}
+.label-item:hover{background:var(--surface2)}
+.label-name{font-family:var(--mono);font-size:11px;color:var(--text);flex:1}
+
+/* ── Custom / Options ── */
+.custom-input{background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);font-family:var(--mono);font-size:11px;padding:7px 9px;resize:none;outline:none;width:100%;height:60px;transition:border-color .15s}
+.custom-input:focus{border-color:var(--accent)}
+.custom-input::placeholder{color:var(--text-dim)}
+.custom-hint{font-size:11px;color:var(--text-dim);line-height:1.5}
+.toggle-all-row{display:flex;gap:5px;margin-bottom:3px}
+.btn-tiny{font-family:var(--mono);font-size:9px;text-transform:uppercase;padding:3px 7px;border-radius:3px;border:1px solid var(--border2);background:var(--surface2);color:var(--text-dim);cursor:pointer;transition:all .15s}
+.btn-tiny:hover{border-color:var(--accent);color:var(--accent)}
+.auto-row{display:flex;align-items:center;gap:7px;padding:3px 0}
+.toggle-switch{position:relative;width:28px;height:16px;flex-shrink:0}
+.toggle-switch input{display:none}
+.toggle-track{position:absolute;inset:0;background:var(--border2);border-radius:8px;cursor:pointer;transition:background .2s}
+.toggle-switch input:checked + .toggle-track{background:var(--accent)}
+.toggle-track::after{content:'';position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#fff;transition:transform .2s}
+.toggle-switch input:checked + .toggle-track::after{transform:translateX(12px)}
+.toggle-label{font-size:11px;color:var(--text);cursor:pointer}
+
+/* ── Legend — redesigned ── */
+.legend-grid{display:flex;flex-direction:column;gap:4px;padding:2px 0}
+.legend-card{border-left:3px solid;border-radius:0 5px 5px 0;padding:6px 9px 7px;background:var(--surface2);line-height:1.35;transition:background .12s}
+.legend-card:hover{background:var(--surface3)}
+.legend-card-header{display:flex;align-items:center;gap:7px;margin-bottom:3px}
+.legend-abbr{font-family:var(--mono);font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px;flex-shrink:0;letter-spacing:.3px;line-height:1.5}
+.legend-fullname{font-size:12px;font-weight:600;color:var(--text-bright);line-height:1.3}
+.legend-desc{font-size:11px;color:var(--text-dim);line-height:1.45;padding-left:2px}
+
+/* ── Panels ── */
+.panel{display:flex;flex-direction:column;overflow:hidden}
+.panel-left{border-right:1px solid var(--border)}
+.panel-header{padding:0 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--surface);flex-shrink:0;gap:8px;height:52px}
+.panel-title{font-family:var(--mono);font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text)}
+.panel-hint{font-family:var(--mono);font-size:10px;color:var(--text-dim);margin-top:2px}
+.panel-actions{display:flex;gap:5px;align-items:center}
+.btn{font-family:var(--mono);font-size:9px;letter-spacing:.5px;text-transform:uppercase;padding:5px 11px;border-radius:3px;border:1px solid var(--border2);background:var(--surface2);color:var(--text);cursor:pointer;transition:all .15s}
+.btn:hover{border-color:var(--text-dim)}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:#000;font-weight:700}
+.btn-primary:hover{filter:brightness(1.1)}
+.btn-primary.code-mode{background:var(--accent2);border-color:var(--accent2);color:#fff}
+.btn-primary.lang-mode{background:#FFB300;border-color:#FFB300;color:#000;font-weight:700}
+.btn-danger{border-color:#e53935;color:#e53935}
+.btn-danger:hover{background:#e53935;color:#fff}
+.btn-copy{border-color:var(--accent2);color:var(--accent2)}
+.btn-copy:hover,.btn-copy.copied{background:var(--accent2);color:#fff}
+.btn-upload{border-color:var(--accent2);color:var(--accent2)}
+.btn-upload:hover,.btn-upload.drag-over{background:rgba(74,157,248,.14);border-color:var(--accent2)}
+.btn-upload.loaded{border-color:var(--accent);color:var(--accent);background:rgba(0,212,170,.1)}
+.btn-upload:disabled{opacity:.6;cursor:default}
+
+/* ── Panel body ── */
+.panel-body{flex:1;overflow:auto;position:relative;padding:14px 16px}
+textarea#input-text{width:100%;background:transparent;border:none;outline:none;color:var(--text);font-family:var(--mono);font-size:12px;line-height:1.75;resize:none;caret-color:var(--accent);display:block;overflow:hidden;min-height:100%}
+textarea#input-text::placeholder{color:var(--text-dim)}
+#output-display{font-family:var(--mono);font-size:12px;line-height:1.75;white-space:pre-wrap;word-break:break-word;min-height:100%}
+
+/* ── Redact tags ── */
+.redact-tag{display:inline-flex;align-items:center;gap:2px;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:700;vertical-align:baseline;cursor:help;position:relative}
+.tag-cls{opacity:.75;font-size:8px}
+.tag-sep{opacity:.3;font-size:7px}
+.tag-lbl{font-size:9px}
+.redact-tag:hover::after{content:attr(data-original);position:absolute;bottom:calc(100% + 5px);left:50%;transform:translateX(-50%);background:var(--surface2);color:#ff6b6b;font-size:10px;padding:4px 8px;border-radius:4px;border:1px solid var(--border2);white-space:nowrap;pointer-events:none;z-index:200;font-weight:400;max-width:300px;overflow:hidden;text-overflow:ellipsis;box-shadow:0 4px 12px rgba(0,0,0,.3)}
+
+/* ── Empty state ── */
+.empty-state{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;pointer-events:none;opacity:var(--empty-op)}
+.empty-icon{font-size:30px}
+.empty-text{font-family:var(--mono);font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--text-dim);text-align:center}
+
+/* ── Processing overlay ── */
+.processing{position:absolute;inset:0;background:var(--proc-bg);display:flex;align-items:center;justify-content:center;z-index:10;opacity:0;pointer-events:none;transition:opacity .2s}
+.processing.active{opacity:1;pointer-events:all}
+.spinner{width:22px;height:22px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── Sync line ── */
+.sync-active .sync-indicator{position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent2),transparent);z-index:5;pointer-events:none}
+
+/* ── Findings bar ── */
+.findings-bar{border-top:1px solid var(--border);background:var(--surface);padding:6px 14px;flex-shrink:0;min-height:38px;display:flex;flex-wrap:wrap;align-items:center;gap:5px}
+.findings-label{font-family:var(--mono);font-size:9px;color:var(--text-dim);letter-spacing:1px;text-transform:uppercase}
+.badge{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:100px;font-family:var(--mono);font-size:9px;font-weight:700;background:var(--badge-bg);border:1px solid var(--badge-border)}
+.badge-dot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <span class="logo-text">REDACT</span>
+    <span class="logo-sub">Data Scrubber</span>
+  </div>
+  <div class="header-center">
+    <div class="mode-switcher">
+      <button class="mode-btn active" data-mode="general"  onclick="switchMode('general')">🔒 General</button>
+      <button class="mode-btn"        data-mode="cloud"    onclick="switchMode('cloud')">&#9729; Cloud / IaC</button>
+      <button class="mode-btn"        data-mode="language" onclick="switchMode('language')">&#9000; Languages</button>
+    </div>
+    <button class="sync-toggle" id="sync-btn" onclick="toggleSync()">&#8645; Sync Scroll</button>
+    </div>
+  <div class="header-right">
+    <div class="status-bar">
+      <div class="status-dot"></div>
+      <span id="status-mode-text">GENERAL</span>
+      <span class="header-count" id="header-count">● <span id="header-count-num">0</span></span>
+    </div>
+    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()" title="Toggle dark/light">🌙</button>
+  </div>
+</header>
+
+<div class="app">
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+    <div class="mode-banner general" id="mode-banner">&#128274; GENERAL &#8212; PHI &middot; PCI &middot; PII &middot; Credentials &middot; Financial &middot; Gov IDs</div>
+
+    <div id="preset-section" style="display:none">
+      <div class="section-title">Quick Presets</div>
+      <div class="preset-row" id="preset-row"></div>
+    </div>
+
+    <div class="section-title">Detection Groups</div>
+    <div class="toggle-all-row">
+      <button class="btn-tiny" onclick="toggleAll(true)">All On</button>
+      <button class="btn-tiny" onclick="toggleAll(false)">All Off</button>
+    </div>
+    <div id="cls-groups"></div>
+
+    <div style="margin-top:4px">
+      <div class="section-title">Custom Terms</div>
+      <div style="display:flex;flex-direction:column;gap:5px;padding:3px 0">
+        <textarea class="custom-input" id="custom-words" placeholder="org-name, john smith&#10;one per line or comma-separated"></textarea>
+        <div class="custom-hint">Names, IPs, domains → tagged <strong style="color:#558B2F">CUSTOM</strong></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Options</div>
+      <div class="auto-row">
+        <label class="toggle-switch"><input type="checkbox" id="auto-redact" checked><span class="toggle-track"></span></label>
+        <span class="toggle-label" onclick="document.getElementById('auto-redact').click()">Auto-redact while typing</span>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Legend</div>
+      <div class="legend-grid" id="legend-grid"></div>
+    </div>
+  </aside>
+
+  <!-- ── Input Panel ── -->
+  <div class="panel panel-left">
+    <div class="panel-header">
+      <div>
+        <div class="panel-title" id="input-title">// Input — General</div>
+        <div class="panel-hint" id="input-hint">Paste text or drag &amp; drop any file onto Upload</div>
+      </div>
+      <div class="panel-actions">
+        <button class="btn btn-upload" id="upload-btn"
+                onclick="document.getElementById('file-input').click()"
+                ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)"
+                title="Upload any file — source code, PDF, DOCX, XLSX, PPTX, config, log, etc.">
+          📂 Upload
+        </button>
+        <!-- accept="*" — backend handles all file types via UTF-8 fallback -->
+        <input type="file" id="file-input" style="display:none" accept="*" onchange="onFileSelect(event)">
+        <button class="btn btn-danger" onclick="clearInput()">Clear</button>
+        <button class="btn btn-primary" id="redact-btn" onclick="runRedact()">Redact ⏎</button>
+      </div>
+    </div>
+    <div class="panel-body" id="input-scroll">
+      <textarea id="input-text" spellcheck="false"
+        placeholder="Paste your content here…
+
+General mode examples:
+  Patient name: Jane Doe  |  SSN: 123-45-6789
+  Card: 4111 1111 1111 1111  |  CVV: 123
+  api_key = s3cr3tV@lue!
+  IBAN: GB29NWBK60161331926819
+  Passport: A12345678
+  lat: 40.7128, lon: -74.0060
+
+Or drag any file onto the Upload button."></textarea>
+    </div>
+  </div>
+
+  <!-- ── Output Panel ── -->
+  <div class="panel">
+    <div class="panel-header">
+      <div>
+        <div class="panel-title">// Redacted Output</div>
+        <div class="panel-hint">Hover any tag to see original · safe to paste into AI chats</div>
+      </div>
+      <div class="panel-actions">
+        <button class="btn btn-copy" id="copy-btn" onclick="copyOutput()">Copy</button>
+        <button class="btn" onclick="downloadOutput()">Download</button>
+      </div>
+    </div>
+    <div class="panel-body" id="output-scroll">
+      <div class="processing" id="processing"><div class="spinner"></div></div>
+      <div id="output-display">
+        <div class="empty-state">
+          <div class="empty-icon">🔒</div>
+          <div class="empty-text">Redacted output<br>appears here</div>
+        </div>
+      </div>
+    </div>
+    <div class="findings-bar" id="findings-bar">
+      <span class="findings-label">Findings:</span>
+      <span style="font-family:var(--mono);font-size:10px;color:var(--text-dim)">None yet</span>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── State ────────────────────────────────────────────────────────────────────
+let currentMode = 'general';                       // 'general' | 'cloud' | 'language'
+let allPatternData = { general:[], cloud:[], language:[] };
+let ALL_CLASSIFICATIONS = {};
+let debounceTimer = null;
+let lastResult = null;
+let syncEnabled = false;
+let isSyncing = false;
+
+// ─── Theme ────────────────────────────────────────────────────────────────────
+function toggleTheme() {
+  const html = document.documentElement;
+  const dark = html.dataset.theme === 'dark';
+  html.dataset.theme = dark ? 'light' : 'dark';
+  document.getElementById('theme-btn').textContent = dark ? '☀️' : '🌙';
+  localStorage.setItem('redact-theme', html.dataset.theme);
+}
+(function() {
+  const t = localStorage.getItem('redact-theme') || 'dark';
+  document.documentElement.dataset.theme = t;
+})();
+
+// ─── Scroll sync ──────────────────────────────────────────────────────────────
+function toggleSync() {
+  syncEnabled = !syncEnabled;
+  document.getElementById('sync-btn').classList.toggle('active', syncEnabled);
+  document.getElementById('input-scroll').classList.toggle('sync-active', syncEnabled);
+  document.getElementById('output-scroll').classList.toggle('sync-active', syncEnabled);
+}
+function syncFrom(srcId, dstId) {
+  if (!syncEnabled || isSyncing) return;
+  isSyncing = true;
+  const src = document.getElementById(srcId);
+  const dst = document.getElementById(dstId);
+  const maxSrc = src.scrollHeight - src.clientHeight;
+  const maxDst = dst.scrollHeight - dst.clientHeight;
+  dst.scrollTop = maxSrc > 0 ? (src.scrollTop / maxSrc) * maxDst : 0;
+  isSyncing = false;
+}
+function autoResizeTextarea() {
+  const ta = document.getElementById('input-text');
+  ta.style.height = 'auto';
+  ta.style.height = ta.scrollHeight + 'px';
+}
+
+// ─── Sidebar section definitions (tree structure) ────────────────────────────
+// These define the visual grouping headers rendered within each mode's sidebar.
+const CLOUD_SECTIONS = [
+  { header: '☁  Cloud Providers', ids: ['AWS_CORE','AWS_IAM','AWS_RES','AZURE_CORE','AZURE_IAM','AZURE_RES','GCP_CORE','GCP_IAM','GCP_NET','GCP_RES'] },
+  { header: '🔧  IaC Tools',       ids: ['TF_CORE','TF_VALS','K8S'] },
+  { header: '⚙  Generic',          ids: ['CODE_CRED','CODE_CONN'] },
+];
+const LANG_SECTIONS = [
+  { header: '⌨  Languages', ids: ['PY_SPECIFIC','JS_SPECIFIC','JAVA_SPECIFIC','GO_SPECIFIC','CS_SPECIFIC','PHP_SPECIFIC','SHELL_SPECIFIC','RUBY_SPECIFIC','SQL_SPECIFIC'] },
+  { header: '⚙  Generic',   ids: ['CODE_CRED','CODE_CONN'] },
+];
+
+// ─── Presets ──────────────────────────────────────────────────────────────────
+const CLOUD_PRESETS = {
+  all:        { label:'All' ,       groups: null },
+  aws:        { label:'AWS',        groups: ['AWS_CORE','AWS_IAM','AWS_RES','CODE_CRED','CODE_CONN'] },
+  azure:      { label:'Azure',      groups: ['AZURE_CORE','AZURE_IAM','AZURE_RES','CODE_CRED','CODE_CONN'] },
+  gcp:        { label:'GCP',        groups: ['GCP_CORE','GCP_IAM','GCP_NET','GCP_RES','CODE_CRED','CODE_CONN'] },
+  terraform:  { label:'Terraform',  groups: ['TF_CORE','TF_VALS','GCP_CORE','AWS_CORE','AZURE_CORE','CODE_CRED','CODE_CONN'] },
+  kubernetes: { label:'K8s',        groups: ['K8S','CODE_CRED','CODE_CONN'] },
+};
+const LANG_PRESETS = {
+  all:        { label:'All',   groups: null },
+  python:     { label:'Python',  groups: ['PY_SPECIFIC','CODE_CRED','CODE_CONN'] },
+  javascript: { label:'JS / TS', groups: ['JS_SPECIFIC','CODE_CRED','CODE_CONN'] },
+  java:       { label:'Java',    groups: ['JAVA_SPECIFIC','CODE_CRED','CODE_CONN'] },
+  go:         { label:'Go',      groups: ['GO_SPECIFIC','CODE_CRED','CODE_CONN'] },
+  csharp:     { label:'C#',      groups: ['CS_SPECIFIC','CODE_CRED','CODE_CONN'] },
+  ruby:       { label:'Ruby',    groups: ['RUBY_SPECIFIC','CODE_CRED','CODE_CONN'] },
+  php:        { label:'PHP',     groups: ['PHP_SPECIFIC','CODE_CRED','CODE_CONN'] },
+  shell:      { label:'Shell',   groups: ['SHELL_SPECIFIC','CODE_CRED','CODE_CONN'] },
+  sql:        { label:'SQL',     groups: ['SQL_SPECIFIC','CODE_CRED','CODE_CONN'] },
+};
+
+const PLACEHOLDERS = {
+  general:  'Paste any content here…\n\nExamples:\n  SSN: 123-45-6789\n  Card: 4111 1111 1111 1111\n  Email: user@example.com\n  IBAN: GB29NWBK60161331926819\n  Passport: A12345678\n  lat: 40.7128, lon: -74.0060\n\nOr drag any file onto Upload.',
+  cloud:    '# Paste cloud config, Terraform, K8s manifests…\n\nExamples:\n  aws_account_id = "123456789012"\n  subscription_id = "12345678-1234-1234-1234-123456789abc"\n  project = "my-org-prod-12345"\n  bucket = "my-prod-data-bucket"',
+  language: '# Paste source code…\n\nExamples:\n  os.environ.get("SECRET_KEY")\n  const API_KEY = "sk-prod-abc123"\n  $db_password = "s3cr3t"\n  export STRIPE_KEY="sk_live_abc123"',
+};
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+async function loadPatterns() {
+  try {
+    const res  = await fetch('/api/patterns');
+    const data = await res.json();
+    allPatternData = data;
+    [...data.general, ...data.cloud, ...data.language].forEach(c => {
+      ALL_CLASSIFICATIONS[c.cls_id] = c;
+    });
+    renderSidebar();
+  } catch(e) { console.error('Failed to load patterns', e); }
+
+  document.getElementById('input-scroll').addEventListener('scroll',
+    () => syncFrom('input-scroll', 'output-scroll'), {passive:true});
+  document.getElementById('output-scroll').addEventListener('scroll',
+    () => syncFrom('output-scroll', 'input-scroll'), {passive:true});
+
+  document.getElementById('theme-btn').textContent =
+    document.documentElement.dataset.theme === 'dark' ? '🌙' : '☀️';
+}
+
+// ─── Mode switch ──────────────────────────────────────────────────────────────
+function switchMode(mode) {
+  currentMode = mode;
+  document.querySelectorAll('.mode-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.mode === mode));
+
+  const banner    = document.getElementById('mode-banner');
+  const title     = document.getElementById('input-title');
+  const btn       = document.getElementById('redact-btn');
+  const presetSec = document.getElementById('preset-section');
+  const statusTxt = document.getElementById('status-mode-text');
+  const ta        = document.getElementById('input-text');
+
+  const cfg = {
+    general:  { cls:'general',  text:'&#128274; GENERAL &#8212; PHI &middot; PCI &middot; PII &middot; Credentials &middot; Financial &middot; Gov IDs',
+                title:'// Input &#8212; General',  btnCls:'btn btn-primary',           status:'GENERAL',      presets:false },
+    cloud:    { cls:'cloud',    text:'&#9729; CLOUD / IaC &#8212; AWS &middot; Azure &middot; GCP &middot; Terraform &middot; Kubernetes',
+                title:'// Input &#8212; Cloud / IaC', btnCls:'btn btn-primary code-mode', status:'CLOUD / IaC',  presets:true  },
+    language: { cls:'language', text:'&#9000; LANGUAGES &#8212; Python &middot; JS &middot; Java &middot; Go &middot; C# &middot; Ruby &middot; PHP &middot; Shell &middot; SQL',
+                title:'// Input &#8212; Languages', btnCls:'btn btn-primary lang-mode', status:'LANGUAGES',    presets:true  },
+  }[mode];
+
+  banner.className       = `mode-banner ${cfg.cls}`;
+  banner.innerHTML       = cfg.text;
+  title.innerHTML        = cfg.title;
+  btn.className          = cfg.btnCls;
+  presetSec.style.display= cfg.presets ? '' : 'none';
+  statusTxt.textContent  = cfg.status;
+
+  if (!ta.value) ta.placeholder = PLACEHOLDERS[mode] || '';
+  renderSidebar();
+  maybeAutoRedact();
+}
+
+// ─── Sidebar ──────────────────────────────────────────────────────────────────
+function buildGroupEl(cls) {
+  const group = document.createElement('div');
+  group.className = 'cls-group open';
+
+  const header = document.createElement('div');
+  header.className = 'cls-header';
+  header.innerHTML = `
+    <span class="cls-pill" style="background:${cls.color};color:${cls.text_color}">${cls.cls_abbr}</span>
+    <span class="cls-header-name">${cls.cls_name}</span>
+    <span class="cls-count">${cls.labels.length}</span>
+    <label class="cls-master" onclick="event.stopPropagation()">
+      <input type="checkbox" checked data-cls="${cls.cls_id}" style="color:${cls.color}"
+             onchange="toggleClass('${cls.cls_id}',this.checked)">
+    </label>
+    <span class="cls-chevron">▶</span>`;
+  header.addEventListener('click', () => group.classList.toggle('open'));
+
+  const labelsEl = document.createElement('div');
+  labelsEl.className = 'cls-labels';
+  cls.labels.forEach(label => {
+    const item = document.createElement('label');
+    item.className = 'label-item';
+    item.innerHTML = `
+      <input type="checkbox" checked data-label="${label}" data-cls="${cls.cls_id}" style="color:${cls.color}">
+      <span class="label-name">${label.replace(/_/g,' ')}</span>`;
+    item.querySelector('input').addEventListener('change', maybeAutoRedact);
+    labelsEl.appendChild(item);
+  });
+
+  group.appendChild(header);
+  group.appendChild(labelsEl);
+  return group;
+}
+
+function buildLegendCard(cls) {
+  const card = document.createElement('div');
+  card.className = 'legend-card';
+  card.style.borderLeftColor = cls.color;
+  card.innerHTML = `
+    <div class="legend-card-header">
+      <span class="legend-abbr" style="background:${cls.color};color:${cls.text_color}">${cls.cls_abbr}</span>
+      <span class="legend-fullname">${cls.cls_name}</span>
+    </div>
+    <div class="legend-desc">${cls.description}</div>`;
+  return card;
+}
+
+function renderSidebar() {
+  const groups    = allPatternData[currentMode] || [];
+  const container = document.getElementById('cls-groups');
+  const legend    = document.getElementById('legend-grid');
+  const presetRow = document.getElementById('preset-row');
+  container.innerHTML = '';
+  legend.innerHTML = '';
+  if (presetRow) presetRow.innerHTML = '';
+
+  // ── Preset buttons ────────────────────────────────────────────────────────
+  if (currentMode === 'cloud' && presetRow) {
+    Object.entries(CLOUD_PRESETS).forEach(([key, p]) => {
+      const b = document.createElement('button');
+      b.className = 'preset-btn'; b.textContent = p.label; b.id = `preset-${key}`;
+      b.onclick = () => applyPreset(key, CLOUD_PRESETS);
+      presetRow.appendChild(b);
+    });
+  } else if (currentMode === 'language' && presetRow) {
+    Object.entries(LANG_PRESETS).forEach(([key, p]) => {
+      const b = document.createElement('button');
+      b.className = 'preset-btn'; b.textContent = p.label; b.id = `preset-${key}`;
+      b.onclick = () => applyPreset(key, LANG_PRESETS);
+      presetRow.appendChild(b);
+    });
+  }
+
+  // ── Detection groups with tree-structure section headers ──────────────────
+  const sections = currentMode === 'cloud' ? CLOUD_SECTIONS
+                 : currentMode === 'language' ? LANG_SECTIONS
+                 : null;
+
+  if (sections) {
+    const groupMap = {};
+    groups.forEach(cls => { if (cls.cls_id !== 'CUSTOM') groupMap[cls.cls_id] = cls; });
+
+    sections.forEach((section, si) => {
+      // Section header
+      const hdr = document.createElement('div');
+      hdr.className = 'sidebar-section-hdr';
+      hdr.innerHTML = `<span>${section.header}</span><span class="sidebar-section-hdr-line"></span>`;
+      container.appendChild(hdr);
+
+      // Groups within this section
+      section.ids.forEach(id => {
+        const cls = groupMap[id];
+        if (!cls) return;
+        container.appendChild(buildGroupEl(cls));
+        legend.appendChild(buildLegendCard(cls));
+      });
+    });
+  } else {
+    // General mode — flat list, no section headers needed
+    groups.forEach(cls => {
+      if (cls.cls_id === 'CUSTOM') return;
+      container.appendChild(buildGroupEl(cls));
+      legend.appendChild(buildLegendCard(cls));
+    });
+  }
+}
+
+function toggleClass(clsId, checked) {
+  document.querySelectorAll(`input[data-label][data-cls="${clsId}"]`).forEach(cb => cb.checked = checked);
+  maybeAutoRedact();
+}
+function toggleAll(state) {
+  document.querySelectorAll('#cls-groups input[type="checkbox"]').forEach(cb => cb.checked = state);
+  maybeAutoRedact();
+}
+function applyPreset(key, presets) {
+  const p = presets[key];
+  if (!p) return;
+  document.querySelectorAll('#cls-groups input[type="checkbox"]').forEach(cb => cb.checked = false);
+  if (!p.groups) {
+    document.querySelectorAll('#cls-groups input[type="checkbox"]').forEach(cb => cb.checked = true);
+  } else {
+    p.groups.forEach(id =>
+      document.querySelectorAll(`input[data-cls="${id}"]`).forEach(cb => cb.checked = true)
+    );
+  }
+  document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+  const btn = document.getElementById(`preset-${key}`);
+  if (btn) btn.classList.add('active');
+  maybeAutoRedact();
+}
+
+// ─── File upload ──────────────────────────────────────────────────────────────
+function onDragOver(e)  { e.preventDefault(); document.getElementById('upload-btn').classList.add('drag-over'); }
+function onDragLeave(e) { document.getElementById('upload-btn').classList.remove('drag-over'); }
+function onDrop(e) {
+  e.preventDefault();
+  document.getElementById('upload-btn').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) uploadFile(file);
+}
+function onFileSelect(e) { const file = e.target.files[0]; if (file) uploadFile(file); }
+function setHint(text)   { document.getElementById('input-hint').textContent = text; }
+
+async function uploadFile(file) {
+  const uploadBtn = document.getElementById('upload-btn');
+  uploadBtn.textContent = '⏳ Loading…';
+  uploadBtn.disabled = true;
+  setHint(`Loading ${file.name}…`);
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const res  = await fetch('/api/upload', { method:'POST', body:fd });
+    const data = await res.json();
+    if (data.error) {
+      setHint('⚠ ' + data.error);
+      uploadBtn.textContent = '📂 Upload';
+      uploadBtn.disabled = false;
+      return;
+    }
+    document.getElementById('input-text').value = data.text;
+    autoResizeTextarea();
+    const lines = data.text.split('\n').length;
+    const kb    = (new Blob([data.text]).size / 1024).toFixed(1);
+    setHint(`📄 ${file.name} — ${lines.toLocaleString()} lines · ${kb} KB`);
+    const short = file.name.length > 18 ? file.name.slice(0,16) + '…' : file.name;
+    uploadBtn.textContent = '📄 ' + short;
+    uploadBtn.classList.add('loaded');
+    uploadBtn.disabled = false;
+    runRedact();
+  } catch(e) {
+    setHint('⚠ Upload failed: ' + e.message);
+    uploadBtn.textContent = '📂 Upload';
+    uploadBtn.disabled = false;
+  }
+}
+function clearFile() {
+  document.getElementById('upload-btn').textContent = '📂 Upload';
+  document.getElementById('upload-btn').classList.remove('loaded');
+  document.getElementById('file-input').value = '';
+  setHint('Paste text or drag & drop any file onto Upload');
+}
+
+// ─── Redaction ────────────────────────────────────────────────────────────────
+function getSelectedTypes() {
+  const t = [];
+  document.querySelectorAll('input[data-label]:checked').forEach(cb => t.push(cb.dataset.label));
+  return t;
+}
+function maybeAutoRedact() {
+  if (document.getElementById('auto-redact').checked) {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(runRedact, 380);
+  }
+}
+async function runRedact() {
+  const text = document.getElementById('input-text').value;
+  if (!text.trim()) { renderOutput(null); return; }
+  const customWords = document.getElementById('custom-words').value
+    .split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+  setProcessing(true);
+  try {
+    const res = await fetch('/api/redact', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ text, mode:currentMode, types:getSelectedTypes(), custom_words:customWords })
+    });
+    const json = await res.json();
+    if (json.error) { setHint('⚠ ' + json.error); return; }
+    lastResult = json;
+    renderOutput(lastResult);
+  } catch(e) { console.error(e); }
+  finally { setProcessing(false); }
+}
+
+// ─── Render output ────────────────────────────────────────────────────────────
+function esc(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderOutput(data) {
+  const display  = document.getElementById('output-display');
+  const bar      = document.getElementById('findings-bar');
+  const hdrCount = document.getElementById('header-count');
+
+  if (!data || !data.original.trim()) {
+    display.innerHTML = `<div class="empty-state"><div class="empty-icon">🔒</div><div class="empty-text">Redacted output<br>appears here</div></div>`;
+    bar.innerHTML = '<span class="findings-label">Findings:</span><span style="font-family:var(--mono);font-size:10px;color:var(--text-dim)">None yet</span>';
+    hdrCount.style.display = 'none';
+    return;
+  }
+
+  const { original, highlights } = data;
+  let html = '', pos = 0;
+  highlights.forEach(h => {
+    if (h.start > pos) html += esc(original.slice(pos, h.start));
+    html += `<span class="redact-tag" style="background:${h.color};color:${h.text_color}" data-original="${h.original}">` +
+            `<span class="tag-cls">${h.cls_abbr}</span>` +
+            `<span class="tag-sep">·</span>` +
+            `<span class="tag-lbl">${h.label.replace(/_/g,' ')}</span></span>`;
+    pos = h.end;
+  });
+  html += esc(original.slice(pos));
+  display.innerHTML = `<div style="white-space:pre-wrap;word-break:break-word">${html}</div>`;
+
+  const clsCounts = {};
+  highlights.forEach(h => clsCounts[h.cls] = (clsCounts[h.cls] || 0) + 1);
+  let barHtml = '<span class="findings-label">Findings:</span>';
+  if (!Object.keys(clsCounts).length) {
+    barHtml += '<span style="font-family:var(--mono);font-size:10px;color:var(--accent)">✓ Clean — no sensitive data found</span>';
+  } else {
+    Object.entries(clsCounts).sort().forEach(([cls, n]) => {
+      const m = ALL_CLASSIFICATIONS[cls] || { color:'#888', cls_abbr:cls };
+      barHtml += `<span class="badge" style="background:${m.color}1a;border-color:${m.color}44">` +
+                 `<span class="badge-dot" style="background:${m.color}"></span>` +
+                 `<span style="color:${m.color};font-family:var(--mono);font-size:9px">${m.cls_abbr || cls}</span>` +
+                 `<span style="color:var(--text-dim);font-family:var(--mono);font-size:9px">×${n}</span></span>`;
+    });
+  }
+  bar.innerHTML = barHtml;
+  if (data.count > 0) {
+    hdrCount.style.display = '';
+    document.getElementById('header-count-num').textContent = data.count;
+  } else {
+    hdrCount.style.display = 'none';
+  }
+}
+
+function setProcessing(s) { document.getElementById('processing').classList.toggle('active', s); }
+
+function clearInput() {
+  document.getElementById('input-text').value = '';
+  document.getElementById('input-text').style.height = 'auto';
+  document.getElementById('file-input').value = '';
+  document.getElementById('upload-btn').textContent = '📂 Upload';
+  document.getElementById('upload-btn').classList.remove('loaded');
+  setHint('Paste text or drag & drop any file onto Upload');
+  lastResult = null;
+  renderOutput(null);
+}
+
+function copyOutput() {
+  if (!lastResult?.redacted) return;
+  navigator.clipboard.writeText(lastResult.redacted).then(() => {
+    const b = document.getElementById('copy-btn');
+    b.textContent = 'Copied!'; b.classList.add('copied');
+    setTimeout(() => { b.textContent = 'Copy'; b.classList.remove('copied'); }, 1800);
+  });
+}
+
+function downloadOutput() {
+  if (!lastResult?.redacted) return;
+  const blob = new Blob([lastResult.redacted], { type:'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `redacted_${currentMode}_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.txt`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// ─── Wire up ──────────────────────────────────────────────────────────────────
+document.getElementById('input-text').addEventListener('input', () => {
+  autoResizeTextarea();
+  maybeAutoRedact();
+});
+document.getElementById('custom-words').addEventListener('input', maybeAutoRedact);
+document.getElementById('input-text').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runRedact(); }
+});
+
+loadPatterns();
+</script>
+</body>
+</html>

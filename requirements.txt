@@ -1,0 +1,12 @@
+# ── Core (required) ──────────────────────────────────────────────────────────
+flask==3.0.3
+werkzeug==3.0.3
+
+# ── Optional: PDF extraction ─────────────────────────────────────────────────
+# Uncomment to enable PDF upload support:
+# pdfminer.six==20231228
+
+# ── Development / Testing ────────────────────────────────────────────────────
+# Uncomment for running the test suite:
+# pytest==8.2.2
+# pytest-cov==5.0.0
