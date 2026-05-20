@@ -98,8 +98,8 @@ python app.py
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/kdanicke/redact-app
-cd redact
+git clone https://github.com/kdanicke/redact-app.git
+cd redact-app
 
 # 2. Create a virtual environment
 python3 -m venv .venv
