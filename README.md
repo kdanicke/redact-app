@@ -64,8 +64,8 @@ A 100% local web app to detect and redact sensitive data from text and files bef
 
 ```powershell
 # 1. Clone the repo
-git clone https://github.com/your-org/redact.git
-cd redact
+git clone https://github.com/kdanicke/redact-app.git
+cd redact-app
 
 # 2. Create a virtual environment
 python -m venv .venv
