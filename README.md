@@ -98,7 +98,7 @@ python app.py
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/your-org/redact.git
+git clone https://github.com/kdanicke/redact-app
 cd redact
 
 # 2. Create a virtual environment
